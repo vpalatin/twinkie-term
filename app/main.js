@@ -1,6 +1,20 @@
 var input_output;
 var self;
 
+var usb = chrome.usb;
+
+/* USB identifier for the Chromium Twinkie dongle */
+var GOOGLE_VENDOR_ID = 0x18d1;
+var TWINKIE_PRODUCT_ID = 0x500a;
+
+/* USB parameters for the interface */
+var CONSOLE_INTERFACE = 0;
+var CONSOLE_EP_OUT = 0x1;
+var CONSOLE_EP_IN  = 0x81;
+
+var DEVICE_INFO = {"vendorId": GOOGLE_VENDOR_ID, "productId": TWINKIE_PRODUCT_ID, "interfaceId":0};
+var permissionObj = {permissions: [{'usbDevices': [DEVICE_INFO] }]};
+
 // utility. extract to another file.
 var ab2str=function(buf) {
   var bufView=new Uint8Array(buf);
@@ -20,6 +34,8 @@ var str2ab = function(str) {
   return buf;
 }
 
+var usbDevs = {};
+
 var Crosh = function(argv) {
   this.argv_ = argv;
   this.io = null;
@@ -32,34 +48,38 @@ var Crosh = function(argv) {
 
     this.io.onVTKeystroke = this.sendString_.bind(this, true /* fromKeyboard */);
     this.io.sendString = this.sendString_.bind(this, false /* fromKeyboard */);
-    this.io.println("Beagle Term, still beta. https://github.com/beagleterm/beagle-term");
+    this.io.println("Beagle Term fork for the Twinkie dongle, at https://github.com/vpalatin/twinkie-term");
     input_output = this.io;
     self = this;
-    chrome.serial.getDevices(function(ports) {
-      var eligiblePorts = ports;
 
-      if (eligiblePorts.length > 0) {
-        eligiblePorts.forEach(function(portNames) {
-          var portPicker = document.querySelector('#port-picker');
-          var portName = portNames.path;
-          portPicker.innerHTML = portPicker.innerHTML + '<option value="' +
-                                 portName +'">' + portName + '</option>';
+    chrome.permissions.contains(permissionObj, function(result) {
+      if (result) {
+        console.warn("Looking for USB Twinkie devices...");
+        chrome.usb.findDevices(DEVICE_INFO, function(devices) {
+          var eligiblePorts = devices;
+
+          if (eligiblePorts.length > 0) {
+            eligiblePorts.forEach(function(device) {
+              var portPicker = document.querySelector('#port-picker');
+              var portName = 'Twinkie: USB ' + device.vendorId.toString(16) +":"+ device.productId.toString(16) + ' [' + device.handle + ']';
+              portPicker.innerHTML = portPicker.innerHTML + '<option value="' +
+                                     device.handle +'">' + portName + '</option>';
+              usbDevs[device.handle] = device;
+            });
+          }
         });
-      }
-    });
-
-    var BITRATE_KEY = 'bit_rate';
-    chrome.storage.local.get(BITRATE_KEY, function(result) {
-      if (result.bit_rate !== undefined) {
-        document.querySelector('#bitrate-picker').value = result[BITRATE_KEY];
       } else {
-        document.querySelector('#bitrate-picker').value = "115200";
+        console.warn('cannot get "usbDevices" permission');
       }
     });
   };
   this.sendString_ = function(fromKeyboard, string) {
-    console.log('nike' + string);
-    chrome.serial.send(self.connectionId, str2ab(string), function () { });
+    var xfer = {
+      "direction" : "out",
+      "endpoint" : CONSOLE_EP_OUT,
+      "data" : str2ab(string)
+    };
+    chrome.usb.bulkTransfer(self.connectionId, xfer, function (info) { });
   };
   this.exit = function(code) {
   };
@@ -77,6 +97,20 @@ window.onload = function() {
 };
 
 window.addEventListener('core-overlay-open', function(e) {
+  /* console bulk Endpoint reception callback */
+  var rxCallback = function(info) {
+    if (info.resultCode == 0 && info.data) {
+      input_output.print(ab2str(info.data));
+    }
+    /* prepare to receive the next packet */
+    var xfer = {
+      "direction" : "in",
+      "endpoint" : CONSOLE_EP_IN,
+      "length" : 64
+    };
+    chrome.usb.bulkTransfer(self.connectionId, xfer, rxCallback.bind(this));
+  };
+
   // If |input_output| is null, it means hterm is not ready yet.
   if (!input_output)
     return;
@@ -84,24 +118,18 @@ window.addEventListener('core-overlay-open', function(e) {
   // TODO(sunglim): Need better method to catch dialog is closed.
   if (!nike.opened) {
     var elem = document.querySelector('#port-picker');
-    var port = elem.options[elem.selectedIndex].value;
-    var bitelem = document.querySelector('#bitrate-picker');
-    var bitrate = Number(bitelem.options[bitelem.selectedIndex].value);
-
-    var BITRATE_KEY = 'bit_rate';
-    var obj = {};
-    obj[BITRATE_KEY] = bitelem.options[bitelem.selectedIndex].value;
-    chrome.storage.local.set(obj);
-
-    chrome.serial.connect(port, {'bitrate': bitrate}, function(openInfo) {
-      input_output.println('Device found ' + port + ' connection Id ' + openInfo.connectionId);
-      self.connectionId = openInfo.connectionId;
-      AddConnectedSerialId(openInfo.connectionId);
-      chrome.serial.onReceive.addListener(function(info) {
-        if (info && info.data) {
-          input_output.print(ab2str(info.data));
-        }
-      });
+    var handle = elem.options[elem.selectedIndex].value;
+ 
+    self.connectionId = usbDevs[handle];
+    chrome.usb.claimInterface(self.connectionId, CONSOLE_INTERFACE, function() {
+      input_output.println('Twinkie USB console interface claimed.');
+      /* prepare to receive packets */
+      var xfer = {
+        "direction" : "in",
+        "endpoint" : CONSOLE_EP_IN,
+        "length" : 64
+      };
+      chrome.usb.bulkTransfer(self.connectionId, xfer, rxCallback.bind(this));
     });
   }
 });

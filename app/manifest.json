@@ -1,21 +1,23 @@
 {
-  "minimum_chrome_version": "25",
+  "minimum_chrome_version": "40",
   "manifest_version": 2,
-  "name": "Beagle Term",
+  "name": "Twinkie Term",
   "version": "1.5",
   "icons": {
-    "128": "images/beagleterm-128.png",
-    "48": "images/beagleterm-48.png",
-    "32": "images/beagleterm-32.png",
-    "16": "images/beagleterm-16.png"
+    "128": "images/twinkieterm-128.png",
+    "48": "images/twinkieterm-48.png",
+    "32": "images/twinkieterm-32.png",
+    "16": "images/twinkieterm-16.png"
   },
-  "description": "Beagle Term is serial terminal emulator.",
+  "description": "USB-serial terminal emulator for the Twinkie dongle",
   "offline_enabled": true,
   "permissions": [
-    "serial",
+    "usb",
+    {"usbDevices": [ {"vendorId": 6353, "productId": 20490, "interfaceId":0}]},
     "storage",
     "fileSystem"
   ],
+  "optional_permissions": [ {"usbDevices": [{"vendorId": 6353, "productId": 20490, "interfaceId":0}]}],
   "app": {
     "background": {
       "scripts": ["background.js"]

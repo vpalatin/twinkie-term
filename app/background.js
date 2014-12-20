@@ -17,7 +17,7 @@ var BeagleWindow = function() {
         connectedSerialId = id;
       };
       win.onClosed.addListener(function() {
-        chrome.serial.disconnect(connectedSerialId, function () {
+	 chrome.usb.closeDevice(connectedSerialId, function () {
         });
       });
     }
