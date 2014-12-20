@@ -2,7 +2,8 @@
   "minimum_chrome_version": "40",
   "manifest_version": 2,
   "name": "Twinkie Term",
-  "version": "1.5",
+  "short_name": "TwinkieTerm",
+  "version": "1.53",
   "icons": {
     "128": "images/twinkieterm-128.png",
     "48": "images/twinkieterm-48.png",
